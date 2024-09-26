@@ -1,19 +1,20 @@
 import streamlit as st
-import joblib
+import pickle  # Replacing joblib with pickle
 import numpy as np
 import pandas as pd
 import os
 import re
-import string
+import string  # Add this import
 
-# Tokenize function
+# Re-define the tokenize function
 re_tok = re.compile(f'([{string.punctuation}“”¨«»®´·º½¾¿¡§£₤‘’])')
 def tokenize(s):
     return re_tok.sub(r'\1', s).split()
 
 # Load the vectorizer
 try:
-    vec = joblib.load("model/vectorizer.pkl")
+    with open("model/vectorizer.pkl", "rb") as f:
+        vec = pickle.load(f)
 except FileNotFoundError:
     st.error("Vectorizer file not found. Please ensure 'model/vectorizer.pkl' is available.")
     st.stop()
@@ -26,23 +27,21 @@ rs = {}
 for label in label_cols:
     model_file = f'model/model_{label}.pkl'
     if os.path.exists(model_file):
-        model, r = joblib.load(model_file)
+        with open(model_file, "rb") as f:
+            model, r = pickle.load(f)
         models[label] = model
         rs[label] = r
     else:
         st.error(f"Model file for '{label}' not found. Please ensure '{model_file}' is available.")
         st.stop()
 
-# Streamlit app definition
+# Define Streamlit app
 def main():
-    st.title('🚦 Toxic Comment Classifier')
-    st.write('Enter a comment below to check its toxicity levels. Only high probability labels will be displayed.')
+    st.title('Toxic Comment Classifier')
+    st.write('Enter a comment below to check its toxicity levels.')
 
     # Text input
     comment = st.text_area('Comment', height=150)
-
-    # Add a slider to select the threshold
-    threshold = st.slider('Select Toxicity Threshold', min_value=0.0, max_value=1.0, value=0.5, step=0.05)
 
     if st.button('Check Toxicity'):
         if comment.strip() == '':
@@ -56,30 +55,21 @@ def main():
                 r = rs[label]
                 model = models[label]
                 comment_nb = comment_vec.multiply(r)
-                proba = model.predict_proba(comment_nb)[:, 1][0]  # Get the probability for the label
-                proba_percent = round(proba * 100, 2)
-                if proba >= threshold:
-                    predictions[label] = proba_percent
+                proba = model.predict_proba(comment_nb)[:, 1][0]
+                predictions[label] = round(proba * 100, 2)
 
-            # Display results based on threshold
-            if predictions:
-                st.subheader(f"Results (Threshold: {threshold * 100}%):")
-                for label, proba in predictions.items():
-                    color = "green" if proba < 40 else "orange" if proba < 70 else "red"
-                    st.markdown(f"<span style='color:{color}; font-size: 18px;'>**{label.capitalize()}**: <span style='background-color:{color}; color:white; padding: 4px 8px; border-radius: 5px;'>{proba}%</span></span>", unsafe_allow_html=True)
-            else:
-                st.info(f"No labels exceed the {threshold * 100}% threshold for toxicity.")
+            st.subheader("Results:")
+            for label, proba in predictions.items():
+                st.write(f"**{label.capitalize()}**: {proba}%")
 
-            # Display a bar chart for high-probability labels
-            if predictions:
-                st.subheader("Toxicity Levels")
-                chart_data = pd.DataFrame({
-                    'Label': list(predictions.keys()),
-                    'Probability': list(predictions.values())
-                })
-                chart_data.set_index('Label', inplace=True)
-                st.bar_chart(chart_data)
+            # Display a bar chart
+            st.subheader("Toxicity Levels")
+            chart_data = pd.DataFrame({
+                'Label': list(predictions.keys()),  # Ensure keys are converted to a list
+                'Probability': list(predictions.values())  # Ensure values are converted to a list
+            })
+            chart_data.set_index('Label', inplace=True)
+            st.bar_chart(chart_data)
 
-# Call the main function
 if __name__ == '__main__':
     main()
